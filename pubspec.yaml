@@ -36,7 +36,12 @@ dependencies:
   cupertino_icons: ^1.0.8
   mapbox_maps_flutter: ^2.6.1
   flutter_dotenv: ^5.2.1
+  firebase_core: ^3.12.1
+  firebase_auth: ^5.5.1
+  fluttertoast: ^8.2.12
+  google_fonts: ^6.2.1
   geolocator: ^13.0.2
+  google_sign_in: ^6.3.0
 
 dev_dependencies:
   flutter_test:
@@ -55,16 +60,13 @@ dev_dependencies:
 # The following section is specific to Flutter packages.
 flutter:
 
-  # The following line ensures that the Material Icons font is
-  # included with your application, so that you can use the icons in
-  # the material Icons class.
   uses-material-design: true
+  assets:
+    - assets/images/apple_logo.png
+    - assets/images/google_logo.png
+    - assets/.env
 
-  # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
-
+  
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
 

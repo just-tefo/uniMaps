@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "599630420945",
+    "project_id": "unimaps-27f60",
+    "storage_bucket": "unimaps-27f60.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:599630420945:android:0e584bc8973f06e9dd9ef0",
+        "android_client_info": {
+          "package_name": "com.example.unimaps"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA2rSK1-n8IdRZM7oFFPlA6fCHdXdhSRko"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
