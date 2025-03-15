@@ -4,6 +4,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart' as gl;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mp;
+import 'search_page.dart'; // Import Search Page
+import 'profile_page.dart'; // Import Profile Page
+import 'package:salomon_bottom_bar/salomon_bottom_bar.dart'; // Import Salomon Bottom Bar
 
 class Homepage extends StatefulWidget {
   const Homepage({super.key});
@@ -14,10 +17,16 @@ class Homepage extends StatefulWidget {
 
 class _HomepageState extends State<Homepage> {
   mp.MapboxMap? mapboxMapController;
-
   StreamSubscription? userPositionStream;
-
   final user = FirebaseAuth.instance.currentUser!;
+  int _currentIndex = 0;
+
+  // List of pages for navigation
+  final List<Widget> _pages = [
+    Container(), // Placeholder for the Map
+    SearchPage(), // Search Page
+    ProfilePage(), // Profile Page
+  ];
 
   @override
   void initState() {
@@ -42,9 +51,43 @@ class _HomepageState extends State<Homepage> {
       appBar: AppBar(
         actions: [IconButton(onPressed: signUserOut, icon: Icon(Icons.logout))],
       ),
-      body: mp.MapWidget(
-        onMapCreated: _onMapCreated,
-        styleUri: mp.MapboxStyles.MAPBOX_STREETS,
+      body: _currentIndex == 0
+          ? mp.MapWidget(
+              onMapCreated: _onMapCreated,
+              styleUri: mp.MapboxStyles.MAPBOX_STREETS,
+            )
+          : _pages[_currentIndex], // Show selected page (Search or Profile)
+      bottomNavigationBar: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(30),
+          child: SalomonBottomBar(
+            currentIndex: _currentIndex,
+            onTap: (index) => setState(() {
+              _currentIndex = index;
+            }),
+            selectedItemColor: Colors.blueAccent,
+            unselectedItemColor: Colors.grey,
+            backgroundColor: Colors.white,
+            items: [
+              SalomonBottomBarItem(
+                icon: Icon(Icons.home),
+                title: Text("Home"),
+                selectedColor: Colors.blueAccent,
+              ),
+              SalomonBottomBarItem(
+                icon: Icon(Icons.search),
+                title: Text("Search"),
+                selectedColor: Colors.green,
+              ),
+              SalomonBottomBarItem(
+                icon: Icon(Icons.person),
+                title: Text("Profile"),
+                selectedColor: Colors.purple,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -66,7 +109,7 @@ class _HomepageState extends State<Homepage> {
     serviceEnabled = await gl.Geolocator.isLocationServiceEnabled();
 
     if (!serviceEnabled) {
-      return Future.error("Locaton services are disabled.");
+      return Future.error("Location services are disabled.");
     }
 
     permission = await gl.Geolocator.checkPermission();
