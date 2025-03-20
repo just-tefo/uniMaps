@@ -1,0 +1,27 @@
+{
+  "name": "unimaps",
+  "version": "1.0.0",
+  "description": "A new Flutter project.",
+  "homepage": "https://github.com/just-tefo/uniMaps#readme",
+  "bugs": {
+    "url": "https://github.com/just-tefo/uniMaps/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/just-tefo/uniMaps.git"
+  },
+  "license": "ISC",
+  "author": "Tefo Mokgoabone",
+  "type": "commonjs",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.2.0"
+  }
+}
