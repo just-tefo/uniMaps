@@ -90,8 +90,15 @@ class _SearchPageState extends State<SearchPage> {
                             var classInfo = searchResults[index];
                             return Card(
                               child: ListTile(
-                                title: Text(classInfo['name'] ?? "Unknown Class"),
-                                subtitle: Text(classInfo['venue'] ?? "Unknown Venue"),
+                                title: Text(classInfo['name'] ?? "Unknown Class", style: TextStyle(fontWeight: FontWeight.bold)),
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text("Venue: ${classInfo['venue'] ?? "Unknown Venue"}"),
+                                    Text("Time: ${classInfo['time'] ?? "Unknown Time"}"),
+                                    Text("Days: ${classInfo['days'] ?? "Unknown Days"}"),
+                                  ],
+                                ),
                                 onTap: () {
                                   Navigator.push(
                                     context,
