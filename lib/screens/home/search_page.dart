@@ -8,10 +8,10 @@ class SearchPage extends StatefulWidget {
 }
 
 class _SearchPageState extends State<SearchPage> {
-  TextEditingController _searchController = TextEditingController();
-  List<Map<String, String>> searchResults = [];
+  final TextEditingController _searchController = TextEditingController();
+  List<Map<String, dynamic>> searchResults = []; // Changed to dynamic to hold more complex data
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  bool isLoading = false; // <-- Added loading state
+  bool isLoading = false;
 
   void _searchClass() async {
     String query = _searchController.text.toUpperCase().trim();
@@ -22,42 +22,59 @@ class _SearchPageState extends State<SearchPage> {
       });
 
       try {
-        var snapshot = await _firestore.collection('timetable').get();
-        Map<String, Map<String, String>> uniqueResults = {}; // Use a Map to track unique classes
+        // 1. First search for classes in timetable
+        var timetableSnapshot = await _firestore.collection('timetable').get();
+        Map<String, Map<String, dynamic>> uniqueResults = {};
 
-        for (var doc in snapshot.docs) {
+        for (var doc in timetableSnapshot.docs) {
           var classData = doc.data();
           String className = classData['Name'] ?? '';
-          List<String> classParts = className.split('/');
-          String classCode = classParts.isNotEmpty ? classParts[0].trim() : className.trim();
+          String venueName = classData['Allocated Location Name'] ?? '';
+          
+          if (className.toUpperCase().contains(query)) {
+            String uniqueKey = "${classData['Name']}_$venueName";
 
-          if (classCode.contains(query)) {
-            String uniqueKey = "${classData['Name']}_${classData['Allocated Location Name']}"; // Unique identifier
+            if (!uniqueResults.containsKey(uniqueKey)) {
+              // 2. For each matching class, find its building details
+              var buildingQuery = await _firestore.collection('Venue')
+                  .where('Name', isEqualTo: venueName)
+                  .limit(1)
+                  .get();
 
-            if (!uniqueResults.containsKey(uniqueKey)) { // Prevent duplicates
+              Map<String, dynamic> buildingData = {};
+              if (buildingQuery.docs.isNotEmpty) {
+                buildingData = buildingQuery.docs.first.data();
+                // Ensure the document has Location field
+                if (buildingData['Location'] == null) {
+                  print('Venue document missing Location field');
+                }
+              }
+
               uniqueResults[uniqueKey] = {
-                "name": classData['Name'] ?? "Unknown Class",
-                "venue": classData['Allocated Location Name'] ?? "Unknown Venue",
+                "className": classData['Name'] ?? "Unknown Class",
+                "venue": venueName,
                 "time": "${classData['Scheduled Start Time']} - ${classData['Scheduled End Time']}",
                 "days": classData['Scheduled Days'] ?? "Unknown Days",
+                // Include building data to pass to Homepage
+                "buildingData": buildingData,
+                "roomDescription": classData['Room Description'] ?? "", // Add if available
               };
             }
           }
         }
 
         setState(() {
-          searchResults = uniqueResults.values.toList(); // Convert Map back to List
+          searchResults = uniqueResults.values.toList();
           isLoading = false;
         });
       } catch (e) {
-        print("Error fetching class data: $e");
+        print("Error fetching data: $e");
         setState(() {
           isLoading = false;
         });
       }
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -70,7 +87,7 @@ class _SearchPageState extends State<SearchPage> {
             TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                labelText: "Enter Class Code (e.g., CSI 468)",
+                labelText: "Enter class name or code",
                 border: OutlineInputBorder(),
                 suffixIcon: IconButton(
                   icon: Icon(Icons.search),
@@ -81,7 +98,7 @@ class _SearchPageState extends State<SearchPage> {
             SizedBox(height: 20),
             Expanded(
               child: isLoading
-                  ? Center(child: CircularProgressIndicator()) // Show loading spinner
+                  ? Center(child: CircularProgressIndicator())
                   : searchResults.isNotEmpty
                       ? ListView.builder(
                           shrinkWrap: true,
@@ -90,20 +107,26 @@ class _SearchPageState extends State<SearchPage> {
                             var classInfo = searchResults[index];
                             return Card(
                               child: ListTile(
-                                title: Text(classInfo['name'] ?? "Unknown Class", style: TextStyle(fontWeight: FontWeight.bold)),
+                                title: Text(classInfo['className'], 
+                                    style: TextStyle(fontWeight: FontWeight.bold)),
                                 subtitle: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text("Venue: ${classInfo['venue'] ?? "Unknown Venue"}"),
-                                    Text("Time: ${classInfo['time'] ?? "Unknown Time"}"),
-                                    Text("Days: ${classInfo['days'] ?? "Unknown Days"}"),
+                                    Text("Venue: ${classInfo['venue']}"),
+                                    Text("Time: ${classInfo['time']}"),
+                                    Text("Days: ${classInfo['days']}"),
+                                    if (classInfo['roomDescription']?.isNotEmpty ?? false)
+                                      Text("Location: ${classInfo['roomDescription']}"),
                                   ],
                                 ),
                                 onTap: () {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) => Homepage(),
+                                      builder: (context) => Homepage(
+                                        selectedBuilding: classInfo['buildingData'],
+                                        roomDescription: classInfo['roomDescription'],
+                                      ),
                                     ),
                                   );
                                 },
@@ -111,7 +134,8 @@ class _SearchPageState extends State<SearchPage> {
                             );
                           },
                         )
-                      : Center(child: Text("No classes found. Try searching!", style: TextStyle(fontSize: 16))),
+                      : Center(child: Text("No classes found. Try searching!", 
+                          style: TextStyle(fontSize: 16))),
             ),
           ],
         ),

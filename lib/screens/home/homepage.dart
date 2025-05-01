@@ -1,35 +1,92 @@
 import 'dart:async';
-import 'dart:convert';
-import 'package:flutter/foundation.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:google_nav_bar/google_nav_bar.dart';
 import 'package:line_icons/line_icons.dart';
-import 'package:uuid/uuid.dart';
 import '../home/profile_page.dart';
 import '../home/search_page.dart';
-import 'package:http/http.dart' as http;
 
 class Homepage extends StatefulWidget {
-  const Homepage({super.key});
+  final Map<String, dynamic>? selectedBuilding;
+  final String? roomDescription;
+  final Map<String, dynamic>? selectedClass;
+
+  const Homepage({
+    super.key,
+    this.selectedBuilding,
+    this.roomDescription,
+    this.selectedClass,
+  });
 
   @override
   State<Homepage> createState() => _HomepageState();
 }
 
+class CustomMarker {
+  final String id;
+  final LatLng position;
+  final String title;
+  final MarkerType type;
+  final Map<String, dynamic>? additionalData;
+
+  CustomMarker({
+    required this.id,
+    required this.position,
+    required this.title,
+    required this.type,
+    this.additionalData,
+  });
+
+  Marker toMarker() {
+    BitmapDescriptor icon;
+    switch (type) {
+      case MarkerType.campusBuilding:
+        icon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue);
+        break;
+      case MarkerType.searchedBuilding:
+        icon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
+        break;
+      case MarkerType.classLocation:
+        icon = BitmapDescriptor.defaultMarkerWithHue(
+          BitmapDescriptor.hueOrange,
+        );
+        break;
+    }
+
+    return Marker(
+      markerId: MarkerId(id),
+      position: position,
+      infoWindow: InfoWindow(title: title),
+      icon: icon,
+    );
+  }
+}
+
+enum MarkerType { campusBuilding, searchedBuilding, classLocation }
+
 class _HomepageState extends State<Homepage> {
+  List<Map<String, dynamic>> _buildings = [];
+  List<Map<String, dynamic>> _filteredBuildings = [];
+  List<Map<String, dynamic>> _currentBuildingRooms = [];
+
   final Completer<GoogleMapController> _controller = Completer();
+  bool _showBuildingDetails = false;
+  bool _showRoomDetails = false;
   LatLng? _currentPosition;
   bool _isLoading = true;
   int _selectedIndex = 0;
   final TextEditingController _searchController = TextEditingController();
-  var uuid = const Uuid();
-  List<dynamic> listOfLocations = [];
-  String token = '1234567890';
-
-  Set<Marker> _markers = {}; // Set to hold the markers
+  Set<Marker> _markers = {};
+  Map<String, dynamic>? _currentBuildingDetails;
+  Map<String, dynamic>? _currentRoomDetails;
+  String? _currentRoomDescription;
+  Map<String, dynamic>? _currentClassDetails;
+  bool _showClassDetails = false;
+  List<Map<String, dynamic>> _classes = [];
 
   static const CameraPosition _initialPosition = CameraPosition(
     target: LatLng(-24.6551, 25.9089),
@@ -38,40 +95,304 @@ class _HomepageState extends State<Homepage> {
 
   @override
   void initState() {
-    _searchController.addListener(() {
-      _onChange();
-    });
     super.initState();
-    _getUserLocation();
-  }
+    _searchController.addListener(_onSearchChanged);
+    _initializeData();
 
-  _onChange() {
-    placeSuggestion(_searchController.text);
-  }
-
-  void placeSuggestion(String input) async {
-    const String googleApiKey = "AIzaSyAtWZFFViuTXnZHGJepI-WcEN1s7ogheF4";
-    try {
-      String passedUrl =
-          "https://maps.googleapis.com/maps/api/place/autocomplete/json";
-      String request =
-          '$passedUrl?input=$input&key=$googleApiKey&sessiontoken=$token&components=country:BW';
-
-      var response = await http.get(Uri.parse(request));
-      var data = json.decode(response.body);
-      if (kDebugMode) {
-        print(data);
-      }
-      if (response.statusCode == 200) {
-        setState(() {
-          listOfLocations = json.decode(response.body)['predictions'];
-        });
-      } else {
-        throw Exception("Failed to load");
-      }
-    } catch (e) {
-      (e.toString());
+    if (widget.selectedBuilding != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _handleIncomingBuilding(widget.selectedBuilding!);
+      });
     }
+
+    if (widget.selectedClass != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _handleClassSelection(widget.selectedClass!);
+      });
+    }
+  }
+
+  Future<void> _initializeData() async {
+    setState(() => _isLoading = true);
+    try {
+      await _getUserLocation();
+      await _loadBuildings();
+      await _loadCampusBuildings();
+    } catch (e) {
+      debugPrint("Initialization error: $e");
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _loadCampusBuildings() async {
+    try {
+      final querySnapshot =
+          await FirebaseFirestore.instance.collection('venue').get();
+
+      Set<Marker> campusMarkers = {};
+
+      for (var doc in querySnapshot.docs) {
+        final data = doc.data();
+        final geoPoint = data['Location'] as GeoPoint?;
+        if (geoPoint != null) {
+          final marker =
+              CustomMarker(
+                id: 'building_${doc.id}',
+                position: LatLng(geoPoint.latitude, geoPoint.longitude),
+                title: data['Name'] ?? 'Building',
+                type: MarkerType.campusBuilding,
+                additionalData: data,
+              ).toMarker();
+          campusMarkers.add(marker);
+        }
+      }
+
+      setState(() {
+        _markers.addAll(campusMarkers);
+      });
+    } catch (e) {
+      debugPrint("Error loading campus buildings: $e");
+    }
+  }
+
+  Future<void> _loadBuildings() async {
+    try {
+      final querySnapshot =
+          await FirebaseFirestore.instance.collection('venue').get();
+
+      debugPrint('Found ${querySnapshot.docs.length} documents');
+
+      setState(() {
+        _buildings =
+            querySnapshot.docs.map((doc) {
+              debugPrint('Document data: ${doc.data()}');
+              final data = doc.data();
+              return {
+                'id': doc.id,
+                'Name':
+                    data['Name'] ?? 'Unnamed Venue', // Ensure proper field name
+                'Location': data['Location'],
+                'rooms': data['rooms'] ?? [],
+              };
+            }).toList();
+        _filteredBuildings = List.from(_buildings);
+      });
+    } catch (e) {
+      debugPrint("Error loading buildings: $e");
+    }
+  }
+
+  void _onSearchChanged() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      if (query.isEmpty) {
+        _filteredBuildings = List.from(_buildings);
+      } else {
+        _filteredBuildings =
+            _buildings.where((building) {
+              final name = building['Name']?.toString().toLowerCase() ?? '';
+              return name.contains(query);
+            }).toList();
+      }
+    });
+  }
+
+  void _handleBuildingSelection(Map<String, dynamic> building) {
+    final geoPoint = building['Location'] as GeoPoint;
+
+    // Clear previous searched markers
+    _markers.removeWhere((m) => m.markerId.value.startsWith('searched_'));
+
+    // Add new searched marker
+    final searchedMarker =
+        CustomMarker(
+          id: 'searched_${building['id']}',
+          position: LatLng(geoPoint.latitude, geoPoint.longitude),
+          title: building['Name'] ?? 'Searched Building',
+          type: MarkerType.searchedBuilding,
+          additionalData: building,
+        ).toMarker();
+
+    setState(() {
+      _markers.add(searchedMarker);
+      _currentBuildingDetails = building;
+      _showBuildingDetails = true;
+    });
+
+    // Center map on selection
+    _controller.future.then((controller) {
+      controller.animateCamera(
+        CameraUpdate.newLatLngZoom(
+          LatLng(geoPoint.latitude, geoPoint.longitude),
+          17,
+        ),
+      );
+    });
+  }
+
+  void _handleClassSelection(Map<String, dynamic> classData) {
+    // Clear previous class markers
+    _markers.removeWhere((m) => m.markerId.value.startsWith('class_'));
+
+    // Get location from class data (assuming class has a building reference)
+    final geoPoint = classData['building']['Location'] as GeoPoint;
+
+    final classMarker =
+        CustomMarker(
+          id: 'class_${classData['id']}',
+          position: LatLng(geoPoint.latitude, geoPoint.longitude),
+          title: classData['name'] ?? 'Class Location',
+          type: MarkerType.classLocation,
+          additionalData: classData,
+        ).toMarker();
+
+    setState(() {
+      _markers.add(classMarker);
+      _currentClassDetails = classData;
+      _showClassDetails = true;
+    });
+
+    // Center map on class
+    _controller.future.then((controller) {
+      controller.animateCamera(
+        CameraUpdate.newLatLngZoom(
+          LatLng(geoPoint.latitude, geoPoint.longitude),
+          17,
+        ),
+      );
+    });
+  }
+
+  void _handleIncomingBuilding(Map<String, dynamic> buildingData) {
+    setState(() {
+      _currentBuildingDetails = buildingData;
+      _currentBuildingRooms = List<Map<String, dynamic>>.from(
+        buildingData['rooms'] ?? [],
+      );
+      _showBuildingDetails = true;
+      _showRoomDetails = false;
+    });
+    _showBuildingOnMap();
+  }
+
+  void _showBuildingOnMap() async {
+    if (_currentBuildingDetails == null ||
+        _currentBuildingDetails!['Location'] == null)
+      return;
+
+    try {
+      final geoPoint = _currentBuildingDetails!['Location'] as GeoPoint;
+      final buildingLocation = LatLng(geoPoint.latitude, geoPoint.longitude);
+
+      // Keep campus buildings and remove only searched/class markers
+      _markers.removeWhere(
+        (m) =>
+            m.markerId.value.startsWith('searched_') ||
+            m.markerId.value.startsWith('class_'),
+      );
+
+      // Add the new searched building marker
+      _markers.add(
+        CustomMarker(
+          id: 'searched_${_currentBuildingDetails!['id']}',
+          position: buildingLocation,
+          title: _currentBuildingDetails!['Name'] ?? 'Building',
+          type: MarkerType.searchedBuilding,
+          additionalData: _currentBuildingDetails,
+        ).toMarker(),
+      );
+
+      final controller = await _controller.future;
+      await controller.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(target: buildingLocation, zoom: 17),
+        ),
+      );
+    } catch (e) {
+      debugPrint("Error showing building: $e");
+    }
+  }
+
+  Widget _buildBuildingDetailsCard() {
+    final building = _currentBuildingDetails!;
+    return Positioned(
+      bottom: 20,
+      left: 20,
+      right: 20,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                building['Name'],
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              if (building['images'] != null && building['images'].isNotEmpty)
+                SizedBox(
+                  height: 150,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: building['images'].length,
+                    itemBuilder:
+                        (ctx, i) => Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: Image.network(building['images'][i]),
+                        ),
+                  ),
+                ),
+              if (_currentBuildingRooms.isNotEmpty) ...[
+                SizedBox(height: 12),
+                Text('Rooms:', style: TextStyle(fontWeight: FontWeight.bold)),
+                ..._currentBuildingRooms
+                    .map(
+                      (room) => ListTile(
+                        title: Text(room['name'] ?? 'Room'),
+                        subtitle:
+                            room['Description'] != null
+                                ? Text(room['Description'])
+                                : null,
+                        onTap: () {
+                          setState(() {
+                            _currentRoomDetails = room;
+                            _showRoomDetails = true;
+                          });
+                        },
+                      ),
+                    ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildClassDetailsCard() {
+    final classData = _currentClassDetails!;
+    return Positioned(
+      bottom: 20,
+      left: 20,
+      right: 20,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                classData['name'],
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              Text('Building: ${classData['building']['Name']}'),
+              // Add other class details
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _getUserLocation() async {
@@ -95,46 +416,50 @@ class _HomepageState extends State<Homepage> {
       setState(() {
         _isLoading = false;
       });
-      print("Location permission denied.");
+      debugPrint("Location permission denied.");
     }
-  }
-
-  void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
   }
 
   void _clearSearch() {
     _searchController.clear();
     setState(() {
-      listOfLocations = [];
+      _filteredBuildings = List.from(_buildings);
     });
   }
 
-  void _addMarker(LatLng location, String markerId) {
-    setState(() {
-      _markers.add(
-        Marker(
-          markerId: MarkerId(markerId),
-          position: location,
-          infoWindow: InfoWindow(title: "Selected Location"),
-        ),
-      );
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Unimaps"),
-        backgroundColor: Colors.white,
-        centerTitle: true,
-        elevation: 5,
+  Widget _buildBottomNavBar() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [BoxShadow(blurRadius: 20, color: Colors.black)],
       ),
-      body: _buildCurrentPage(),
-      bottomNavigationBar: _buildBottomNavBar(),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 15.0, vertical: 8),
+          child: GNav(
+            rippleColor: Colors.grey[300]!,
+            hoverColor: Colors.grey[100]!,
+            gap: 8,
+            activeColor: Color(0xFF1B5E20),
+            iconSize: 24,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            duration: const Duration(milliseconds: 400),
+            tabBackgroundColor: Colors.grey[100]!,
+            color: Colors.black,
+            tabs: const [
+              GButton(icon: LineIcons.map, text: 'Map'),
+              GButton(icon: LineIcons.search, text: 'Search'),
+              GButton(icon: LineIcons.user, text: 'Profile'),
+            ],
+            selectedIndex: _selectedIndex,
+            onTabChange: (index) {
+              setState(() {
+                _selectedIndex = index;
+              });
+            },
+          ),
+        ),
+      ),
     );
   }
 
@@ -151,151 +476,127 @@ class _HomepageState extends State<Homepage> {
     }
   }
 
+  bool _isPositionOnMarker(LatLng position, Marker marker) {
+    // Simple distance check - you might need to adjust the threshold
+    final distance = Geolocator.distanceBetween(
+      position.latitude,
+      position.longitude,
+      marker.position.latitude,
+      marker.position.longitude,
+    );
+    return distance < 50; // 50 meters threshold
+  }
+
+  void _handleMarkerTap(Marker marker) {
+    final markerId = marker.markerId.value;
+    
+    if (markerId.startsWith('building_')) {
+      final buildingId = markerId.replaceFirst('building_', '');
+      final building = _buildings.firstWhere((b) => b['id'] == buildingId);
+      _handleBuildingSelection(building);
+    }
+    else if (markerId.startsWith('class_')) {
+      final classId = markerId.replaceFirst('class_', '');
+      final classData = _classes.firstWhere((c) => c['id'] == classId);
+      _handleClassSelection(classData);
+    }
+    else if (markerId.startsWith('searched_')) {
+      final buildingId = markerId.replaceFirst('searched_', '');
+      final building = _buildings.firstWhere((b) => b['id'] == buildingId);
+      _handleBuildingSelection(building);
+    }
+  }
+
+  Widget _buildSearchResultsList() {
+    return ListView.builder(
+      itemCount: _filteredBuildings.length,
+      itemBuilder: (context, index) {
+        final building = _filteredBuildings[index];
+        return Card(
+          margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: ListTile(
+            title: Text(
+              building['Name'] ?? 'Unnamed Venue',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            subtitle:
+                building['rooms'] != null && building['rooms'].isNotEmpty
+                    ? Text('${building['rooms'].length} rooms available')
+                    : Text('No rooms listed'),
+            onTap:
+                () => _handleBuildingSelection(
+                  building,
+                ), // Changed from _selectBuilding
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildMapPage() {
-    return Column(
+    return Stack(
       children: [
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: TextField(
-            controller: _searchController,
-            decoration: InputDecoration(
-              hintText: 'Search here...',
-              filled: true,
-              fillColor: Colors.white.withOpacity(0.8),
-              prefixIcon: Icon(Icons.search, color: Colors.blue),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(30),
-                borderSide: BorderSide.none,
-              ),
-              contentPadding: EdgeInsets.symmetric(vertical: 15, horizontal: 20),
-            ),
-            onChanged: (value) {
-              setState(() {});
-            },
-          ),
-        ),
-        Visibility(
-          visible: _searchController.text.isNotEmpty,
-          child: Expanded(
-            child: ListView.builder(
-              itemCount: listOfLocations.length,
-              itemBuilder: (context, index) {
-                return GestureDetector(
-                  onTap: () async {
-                    String placeId = listOfLocations[index]['place_id'];
-                    String googleApiKey = "AIzaSyAtWZFFViuTXnZHGJepI-WcEN1s7ogheF4";
-                    String detailsUrl =
-                        "https://maps.googleapis.com/maps/api/place/details/json?place_id=$placeId&key=$googleApiKey";
-
-                    var response = await http.get(Uri.parse(detailsUrl));
-                    var data = json.decode(response.body);
-
-                    if (response.statusCode == 200) {
-                      var location = data['result']['geometry']['location'];
-                      double lat = location['lat'];
-                      double lng = location['lng'];
-
-                      _addMarker(LatLng(lat, lng), uuid.v4());
-                      _clearSearch();
-
-                      final GoogleMapController controller = await _controller.future;
-                      controller.animateCamera(
-                        CameraUpdate.newCameraPosition(
-                          CameraPosition(
-                            target: LatLng(lat, lng),
-                            zoom: 16,
-                          ),
-                        ),
-                      );
-                    } else {
-                      throw Exception("Failed to fetch location details");
-                    }
-                  },
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 6,
-                          offset: Offset(0, 2),
-                        ),
-                      ],
+        Column(
+          children: [
+            // ... your search field and other widgets ...
+            Expanded(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : GoogleMap(
+                      initialCameraPosition: _initialPosition,
+                      mapType: MapType.normal,
+                      myLocationEnabled: true,
+                      myLocationButtonEnabled: true,
+                      markers: _markers,
+                      onMapCreated: (GoogleMapController controller) {
+                        if (!_controller.isCompleted) {
+                          _controller.complete(controller);
+                        }
+                      },
+                      onTap: (LatLng position) {
+                        bool tappedMarker = false;
+                        for (final marker in _markers) {
+                          if (_isPositionOnMarker(position, marker)) {
+                            _handleMarkerTap(marker);
+                            tappedMarker = true;
+                            break;
+                          }
+                        }
+                        if (!tappedMarker) {
+                          setState(() {
+                            _showBuildingDetails = false;
+                            _showClassDetails = false;
+                          });
+                        }
+                      },
                     ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.all(16),
-                      title: Text(
-                        listOfLocations[index]["description"],
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: Colors.black,
-                        ),
-                      ),
-                      trailing: Icon(
-                        Icons.location_on,
-                        color: Colors.blue,
-                      ),
-                    ),
-                  ),
-                );
-              },
             ),
-          ),
+          ],
         ),
-        Expanded(
-          child: _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : GoogleMap(
-                  initialCameraPosition: _initialPosition,
-                  mapType: MapType.normal,
-                  myLocationEnabled: true,
-                  myLocationButtonEnabled: true,
-                  markers: _markers,
-                  onMapCreated: (GoogleMapController controller) {
-                    if (!_controller.isCompleted) {
-                      _controller.complete(controller);
-                    }
-                  },
-                ),
-        ),
+        if (_showBuildingDetails) _buildBuildingDetailsCard(),
+        if (_showClassDetails) _buildClassDetailsCard(),
       ],
     );
   }
 
-  Widget _buildBottomNavBar() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(blurRadius: 20, color: Colors.black.withOpacity(.1)),
-        ],
-      ),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 15.0, vertical: 8),
-          child: GNav(
-            rippleColor: Colors.grey[300]!,
-            hoverColor: Colors.grey[100]!,
-            gap: 8,
-            activeColor: Colors.blueAccent,
-            iconSize: 24,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            duration: const Duration(milliseconds: 400),
-            tabBackgroundColor: Colors.grey[100]!,
-            color: Colors.black,
-            tabs: const [
-              GButton(icon: LineIcons.map, text: 'Map'),
-              GButton(icon: LineIcons.search, text: 'Search'),
-              GButton(icon: LineIcons.user, text: 'Profile'),
-            ],
-            selectedIndex: _selectedIndex,
-            onTabChange: _onItemTapped,
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          "unimaps",
+          style: GoogleFonts.marcellus(
+            fontWeight: FontWeight.w900,
+            fontSize: 24,
+            color: Color(0xFF1B5E20),
           ),
         ),
+        backgroundColor: Colors.white,
+        centerTitle: true,
+        elevation: 5,
       ),
+      body: _buildCurrentPage(),
+      bottomNavigationBar: _buildBottomNavBar(),
     );
   }
 }

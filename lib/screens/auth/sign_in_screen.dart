@@ -32,7 +32,6 @@ class _SignInScreenState extends State<SignInScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 10),
                 // Email Input Field
                 MyTextField(
                   controller: emailController,
@@ -97,8 +96,6 @@ class _SignInScreenState extends State<SignInScreen> {
                           }
                         },
                       ),
-
-                const SizedBox(height: 20),  // Increased height for consistency
               ],
             ),
           ),

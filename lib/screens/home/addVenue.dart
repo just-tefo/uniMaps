@@ -4,6 +4,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:unimaps/components/buttons.dart';
 
 class AddVenueScreen extends StatefulWidget {
   @override
@@ -143,11 +144,8 @@ class _AddVenueScreenState extends State<AddVenueScreen> {
                   controller: descriptionController,
                   decoration: InputDecoration(labelText: "Description"),
                 ),
-                SizedBox(height: 10),
-                ElevatedButton(
-                  onPressed: _pickImages,
-                  child: Text("Pick Images"),
-                ),
+                SizedBox(height: 20.0),
+                MyButton(onTap: _pickImages, text: "Pick Images"),
                 if (selectedImages.isNotEmpty)
                   SizedBox(
                     height: 100,
@@ -163,10 +161,7 @@ class _AddVenueScreenState extends State<AddVenueScreen> {
                     ),
                   ),
                 SizedBox(height: 10),
-                ElevatedButton(
-                  onPressed: _saveVenue,
-                  child: Text("Save Venue"),
-                ),
+                MyButton(onTap: _saveVenue, text: "Save Venue"),
               ],
             ),
           ),

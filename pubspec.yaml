@@ -26,6 +26,7 @@ dependencies:
   line_icons: ^2.0.3
   firebase_storage: ^12.4.5
   image_picker: ^1.1.2
+  flutter_launcher_icons: ^0.14.3
   ## flutter_google_places: ^0.3.0
   ## flutter_google_maps_webservices: ^1.1.1
 
@@ -52,7 +53,13 @@ flutter:
     - assets/images/google_logo.png
     - assets/.env
     - assets/timetable.json
+    - assets/logo.png
 
 dependency_overrides:
   user_repository:
     path: packages/user_repository
+
+flutter_icons:
+  android: true
+  ios: true
+  image_path: "assets/logo.png"

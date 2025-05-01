@@ -1,7 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:carousel_slider/carousel_slider.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // For Firebase authentication
+import 'package:firebase_auth/firebase_auth.dart'; 
+import 'package:unimaps/components/buttons.dart';
 import 'addVenue.dart';
 import '../auth/welcome.dart';
 
@@ -191,7 +192,7 @@ class _ProfilePageState extends State<ProfilePage> {
               child: Column(
                 children: [
                   ListTile(
-                    leading: Icon(Icons.add_location_alt, color: Colors.blue),
+                    leading: Icon(Icons.add_location_alt, color: Colors.green[900]),
                     title: Text("Contribute a Venue"),
                     subtitle: Text("Add new venue details to the map"),
                     trailing: Icon(Icons.arrow_forward_ios),
@@ -207,100 +208,14 @@ class _ProfilePageState extends State<ProfilePage> {
                 ],
               ),
             ),
-
-            SizedBox(height: 10),
-
-            // Existing Contribution Card
-            Card(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              elevation: 4,
-              child: Padding(
-                padding: EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: () {}, // No functionality yet
-                      icon: Icon(Icons.my_location),
-                      label: Text("Get Point"),
-                    ),
-                    SizedBox(height: 10),
-                    DropdownButtonFormField<String>(
-                      value: selectedVenue,
-                      hint: Text("Select Venue Name"),
-                      items:
-                          venueNames.map((venue) {
-                            return DropdownMenuItem(
-                              value: venue,
-                              child: Text(venue),
-                            );
-                          }).toList(),
-                      onChanged:
-                          (value) => setState(() => selectedVenue = value),
-                      decoration: InputDecoration(
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: 10),
-                    ElevatedButton.icon(
-                      onPressed: () {}, // No functionality yet
-                      icon: Icon(Icons.upload),
-                      label: Text("Upload Photos"),
-                    ),
-                    SizedBox(height: 10),
-                    TextField(
-                      controller: detailsController,
-                      decoration: InputDecoration(
-                        labelText: "Additional Details (e.g., Floor, Room No.)",
-                        border: OutlineInputBorder(),
-                      ),
-                      maxLines: 2,
-                    ),
-                    SizedBox(height: 10),
-                    ElevatedButton(
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              "Submitted! (No actual functionality yet)",
-                            ),
-                          ),
-                        );
-                      },
-                      child: Text("Submit"),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
             SizedBox(height: 30),
 
-            // Manage Account Section
-            ElevatedButton(
-              onPressed: () {}, // No functionality yet
-              style: ElevatedButton.styleFrom(
-                minimumSize: Size(double.infinity, 50),
-              ),
-              child: Text("Manage Account"),
-            ),
+            MyButton(onTap: () {}, text: "Manage Account"),
             SizedBox(height: 20),
 
+            MyButton(onTap: () => logOut(context), text: "Logout")
             // Logout Section
-            ElevatedButton(
-              onPressed: () => logOut(context), // ✅ Now it works
-              // Log out the user
-              style: ElevatedButton.styleFrom(
-                minimumSize: Size(double.infinity, 50),
-              ),
-              child: Text("Logout"),
-            ),
+            
           ],
         ),
       ),

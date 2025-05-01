@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:unimaps/blocs/authentication_bloc/authentication_bloc.dart';
 import 'package:unimaps/screens/home/homepage.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -13,24 +14,28 @@ class MyAppView extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Firebase Auth',
       theme: ThemeData(
+        textTheme: GoogleFonts.outfitTextTheme(),
         colorScheme: const ColorScheme.light(
-        surface: Color(0xFFE0E0E0),
-        onSurface: Color(0xFF2D2D2D),
-        primary: Color(0xFF4A4A4A),
-        onPrimary: Colors.black,
-        secondary: Color(0xFF707070),
-        onSecondary: Colors.white,
-        tertiary: Color(0xFFB0B0B0),
-        error: Colors.red,
-        outline: Color(0xFF424242)
-      ),
+          surface: Colors.white,
+          onSurface: Colors.black,
+          primary: Colors.black,
+          onPrimary: Colors.black,
+          secondary: Color(0xFF1B5E20),
+          onSecondary: Colors.white, 
+          tertiary: Colors.white,
+          error: Colors.red,
+          outline: Colors.black
+        ),
+        iconTheme: IconThemeData(
+          color: Colors.black
+        )
       ),
       home: BlocBuilder<AuthenticationBloc, AuthenticationState>(
         builder: (context, state) {
           if (state.status == AuthenticationStatus.authenticated) {
-            return const Homepage();
+            return Homepage();
           } else {
-            return const Homepage();
+            return const WelcomeScreen();
           }
         },
       ),
